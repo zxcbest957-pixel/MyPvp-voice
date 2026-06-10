@@ -43,8 +43,42 @@ class CustomBot(commands.Bot):
 
 bot = CustomBot(command_prefix="!", intents=intents)
 
+import json
+
 # Dictionary to keep track of dynamic channels: {channel_id: owner_id}
 temp_channels = {}
+# Whitelist memory dictionary: {owner_id: set(friend_ids)}
+whitelists = {}
+
+WHITELIST_FILE = "whitelist.json"
+
+def load_whitelist():
+    global whitelists
+    if os.path.exists(WHITELIST_FILE):
+        try:
+            with open(WHITELIST_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                # Convert keys back to int, and values back to set of ints
+                whitelists = {int(k): set(int(v) for v in vs) for k, vs in data.items()}
+                print("Loaded whitelists from file.")
+        except Exception as e:
+            print(f"Error loading whitelist: {e}")
+            whitelists = {}
+    else:
+        whitelists = {}
+
+def save_whitelist():
+    try:
+        with open(WHITELIST_FILE, "w", encoding="utf-8") as f:
+            # Convert keys and values to serializable types
+            data = {str(k): list(vs) for k, vs in whitelists.items()}
+            json.dump(data, f, indent=4, ensure_ascii=False)
+            print("Saved whitelists to file.")
+    except Exception as e:
+        print(f"Error saving whitelist: {e}")
+
+# Load the whitelist immediately on start
+load_whitelist()
 
 # Helper for localizing text
 def get_txt(ru: str, en: str, is_russian: bool) -> str:
@@ -290,6 +324,93 @@ class InviteSelect(discord.ui.UserSelect):
             await interaction.response.send_message(msg, ephemeral=True)
 
 
+class AddFriendSelect(discord.ui.UserSelect):
+    def __init__(self, channel: discord.VoiceChannel, is_russian: bool):
+        placeholder = get_txt("Добавить друга в вайт-лист...", "Add friend to whitelist...", is_russian)
+        super().__init__(placeholder=placeholder, min_values=1, max_values=1)
+        self.channel = channel
+        self.is_russian = is_russian
+
+    async def callback(self, interaction: discord.Interaction):
+        member = self.values[0]
+        if not isinstance(member, discord.Member):
+            msg = get_txt("❌ Пользователь не найден.", "❌ User not found.", self.is_russian)
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+
+        owner_id = interaction.user.id
+        if owner_id not in whitelists:
+            whitelists[owner_id] = set()
+
+        if member.id == owner_id:
+            msg = get_txt("❌ Вы не можете добавить себя.", "❌ You cannot add yourself.", self.is_russian)
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+
+        whitelists[owner_id].add(member.id)
+        save_whitelist()
+
+        try:
+            overwrite = self.channel.overwrites_for(member)
+            overwrite.connect = True
+            overwrite.view_channel = True
+            await self.channel.set_permissions(member, overwrite=overwrite)
+        except Exception:
+            pass
+
+        msg = get_txt(
+            f"✅ {member.mention} добавлен в ваш вайт-лист!",
+            f"✅ {member.mention} has been added to your whitelist!",
+            self.is_russian
+        )
+        await interaction.response.send_message(msg, ephemeral=True)
+
+
+class RemoveFriendSelect(discord.ui.UserSelect):
+    def __init__(self, channel: discord.VoiceChannel, is_russian: bool):
+        placeholder = get_txt("Удалить друга из вайт-листа...", "Remove friend from whitelist...", is_russian)
+        super().__init__(placeholder=placeholder, min_values=1, max_values=1)
+        self.channel = channel
+        self.is_russian = is_russian
+
+    async def callback(self, interaction: discord.Interaction):
+        member = self.values[0]
+        if not isinstance(member, discord.Member):
+            msg = get_txt("❌ Пользователь не найден.", "❌ User not found.", self.is_russian)
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+
+        owner_id = interaction.user.id
+        owner_whitelist = whitelists.get(owner_id, set())
+
+        if member.id not in owner_whitelist:
+            msg = get_txt("❌ Этого пользователя нет в вашем вайт-листе.", "❌ This user is not in your whitelist.", self.is_russian)
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+
+        owner_whitelist.remove(member.id)
+        save_whitelist()
+
+        try:
+            overwrite = self.channel.overwrites_for(member)
+            overwrite.connect = None
+            overwrite.view_channel = None
+            await self.channel.set_permissions(member, overwrite=overwrite)
+            
+            default_overwrite = self.channel.overwrites_for(interaction.guild.default_role)
+            if default_overwrite.connect is False and member.voice and member.voice.channel == self.channel:
+                await member.move_to(None)
+        except Exception:
+            pass
+
+        msg = get_txt(
+            f"✅ {member.mention} удален из вашего вайт-листа.",
+            f"✅ {member.mention} has been removed from your whitelist.",
+            self.is_russian
+        )
+        await interaction.response.send_message(msg, ephemeral=True)
+
+
 # --- Dropdown Views ---
 class DropdownView(discord.ui.View):
     def __init__(self, select_item):
@@ -315,6 +436,8 @@ class VoiceControlView(discord.ui.View):
         self.kick_btn.label = get_txt("🚫 Выгнать", "🚫 Kick", is_russian)
         self.mute_btn.label = get_txt("🔇 Мут/Размут", "🔇 Mute/Unmute", is_russian)
         self.invite_btn.label = get_txt("📩 Пригласить", "📩 Invite", is_russian)
+        self.add_friend_btn.label = get_txt("➕ Друг", "➕ Add Friend", is_russian)
+        self.remove_friend_btn.label = get_txt("➖ Друг", "➖ Remove Friend", is_russian)
 
     async def check_owner_or_claim(self, interaction: discord.Interaction) -> bool:
         current_owner_id = temp_channels.get(self.channel.id)
@@ -432,6 +555,28 @@ class VoiceControlView(discord.ui.View):
         msg = get_txt("Выберите пользователя, которому хотите дать доступ:", "Choose user to grant access:", self.is_russian)
         await interaction.response.send_message(msg, view=view, ephemeral=True)
 
+    @discord.ui.button(style=discord.ButtonStyle.success, custom_id="vc_add_friend", row=1)
+    async def add_friend_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self.check_owner_or_claim(interaction):
+            msg = get_txt("❌ Вы не владелец этого канала!", "❌ You are not the owner of this channel!", self.is_russian)
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+        
+        view = DropdownView(AddFriendSelect(self.channel, self.is_russian))
+        msg = get_txt("Выберите пользователя, которого хотите добавить в вайт-лист:", "Choose user to add to whitelist:", self.is_russian)
+        await interaction.response.send_message(msg, view=view, ephemeral=True)
+
+    @discord.ui.button(style=discord.ButtonStyle.danger, custom_id="vc_remove_friend", row=1)
+    async def remove_friend_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self.check_owner_or_claim(interaction):
+            msg = get_txt("❌ Вы не владелец этого канала!", "❌ You are not the owner of this channel!", self.is_russian)
+            await interaction.response.send_message(msg, ephemeral=True)
+            return
+        
+        view = DropdownView(RemoveFriendSelect(self.channel, self.is_russian))
+        msg = get_txt("Выберите пользователя, которого хотите удалить из вайт-листа:", "Choose user to remove from whitelist:", self.is_russian)
+        await interaction.response.send_message(msg, view=view, ephemeral=True)
+
 
 # Shared helper to create voice channels
 async def create_voice_channel_helper(interaction: discord.Interaction, member: discord.Member, guild: discord.Guild, category):
@@ -465,6 +610,19 @@ async def create_voice_channel_helper(interaction: discord.Interaction, member: 
         )
         
         temp_channels[new_channel.id] = member.id
+        
+        # Apply whitelisted friends overwrites
+        owner_whitelist = whitelists.get(member.id, set())
+        for friend_id in owner_whitelist:
+            friend_member = guild.get_member(friend_id)
+            if friend_member:
+                try:
+                    overwrite = new_channel.overwrites_for(friend_member)
+                    overwrite.connect = True
+                    overwrite.view_channel = True
+                    await new_channel.set_permissions(friend_member, overwrite=overwrite)
+                except Exception:
+                    pass
         
         moved_status = get_txt(
             " и вы были перемещены туда!",
@@ -699,24 +857,27 @@ async def on_voice_state_update(member, before, after):
         if default_overwrite.connect is False:
             # If the user who joined is not the owner
             if member.id != owner_id:
-                # Check if they have an explicit user overwrite allowing them
-                user_overwrite = channel.overwrites_for(member)
-                if user_overwrite.connect is not True:
-                    try:
-                        # Kick them out of the voice channel (disconnect)
-                        await member.move_to(None)
+                # Check if they are in the owner's whitelist
+                owner_whitelist = whitelists.get(owner_id, set())
+                if member.id not in owner_whitelist:
+                    # Check if they have an explicit user overwrite allowing them
+                    user_overwrite = channel.overwrites_for(member)
+                    if user_overwrite.connect is not True:
                         try:
-                            is_ru = (str(member.guild.preferred_locale) == "ru")
-                            msg = get_txt(
-                                "🔒 Этот канал закрыт владельцем.",
-                                "🔒 This channel is locked by the owner.",
-                                is_ru
-                            )
-                            await member.send(msg)
-                        except Exception:
-                            pass
-                    except Exception as e:
-                        print(f"Error kicking unauthorized member: {e}")
+                            # Kick them out of the voice channel (disconnect)
+                            await member.move_to(None)
+                            try:
+                                is_ru = (str(member.guild.preferred_locale) == "ru")
+                                msg = get_txt(
+                                    "🔒 Этот канал закрыт владельцем.",
+                                    "🔒 This channel is locked by the owner.",
+                                    is_ru
+                                )
+                                await member.send(msg)
+                            except Exception:
+                                pass
+                        except Exception as e:
+                            print(f"Error kicking unauthorized member: {e}")
 
     # 2. Check if member left a tracked temporary channel
     if before.channel and before.channel.id in temp_channels:

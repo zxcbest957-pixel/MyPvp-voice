@@ -385,35 +385,37 @@ class RemoveFriendSelect(discord.ui.UserSelect):
         for member in self.values:
             if not isinstance(member, discord.Member):
                 continue
-            if member.id not in owner_whitelist:
-                continue
 
-            owner_whitelist.remove(member.id)
-            removed_mentions.append(member.mention)
+            # Remove from whitelist if present
+            if member.id in owner_whitelist:
+                owner_whitelist.remove(member.id)
 
+            # Explicitly deny channel access (Blacklist)
             try:
                 overwrite = self.channel.overwrites_for(member)
-                overwrite.connect = None
-                overwrite.view_channel = None
+                overwrite.connect = False
+                overwrite.view_channel = False
                 await self.channel.set_permissions(member, overwrite=overwrite)
                 
-                default_overwrite = self.channel.overwrites_for(interaction.guild.default_role)
-                if default_overwrite.connect is False and member.voice and member.voice.channel == self.channel:
+                # Kick them from the voice channel immediately if they are in it
+                if member.voice and member.voice.channel == self.channel:
                     await member.move_to(None)
+                
+                removed_mentions.append(member.mention)
             except Exception:
                 pass
 
         if removed_mentions:
             save_whitelist()
             msg = get_txt(
-                f"✅ Удалены из вайт-листа: {', '.join(removed_mentions)}",
-                f"✅ Removed from whitelist: {', '.join(removed_mentions)}",
+                f"✅ Заблокированы в канале и удалены из вайт-листа: {', '.join(removed_mentions)}",
+                f"✅ Blocked from the channel and removed from whitelist: {', '.join(removed_mentions)}",
                 self.is_russian
             )
         else:
             msg = get_txt(
-                "❌ Ни один пользователь не был удален (их не было в списке).",
-                "❌ No users were removed (they were not in your whitelist).",
+                "❌ Ни один пользователь не был удален/заблокирован.",
+                "❌ No users were removed/blocked.",
                 self.is_russian
             )
         await interaction.response.send_message(msg, ephemeral=True)

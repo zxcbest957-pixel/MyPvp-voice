@@ -174,154 +174,165 @@ class LimitModal(discord.ui.Modal):
 class KickSelect(discord.ui.UserSelect):
     def __init__(self, channel: discord.VoiceChannel, is_russian: bool):
         placeholder = get_txt("Выберите кого выгнать...", "Choose who to kick...", is_russian)
-        super().__init__(placeholder=placeholder, min_values=1, max_values=1)
+        super().__init__(placeholder=placeholder, min_values=1, max_values=25)
         self.channel = channel
         self.is_russian = is_russian
 
     async def callback(self, interaction: discord.Interaction):
-        member = self.values[0]
-        if not isinstance(member, discord.Member):
-            msg = get_txt("❌ Пользователь не найден.", "❌ User not found.", self.is_russian)
-            await interaction.response.send_message(msg, ephemeral=True)
-            return
-        
-        # Security: Prevent kicking administrators, owners, or members with equal/higher roles
-        if member.guild_permissions.administrator or member.id == interaction.guild.owner_id or member.top_role >= interaction.user.top_role:
-            msg = get_txt(
-                "❌ Вы не можете выгнать этого пользователя (у него равные или более высокие права).",
-                "❌ You cannot kick this user (equal or higher permissions).",
-                self.is_russian
-            )
-            await interaction.response.send_message(msg, ephemeral=True)
-            return
+        kicked_mentions = []
+        failed_mentions = []
 
-        if member.voice and member.voice.channel == self.channel:
-            try:
-                await member.move_to(None)
-                msg = get_txt(
-                    f"✅ {member.mention} был выгнан из канала.",
-                    f"✅ {member.mention} was kicked from the channel.",
-                    self.is_russian
-                )
-                await interaction.response.send_message(msg, ephemeral=True)
-            except Exception as e:
-                msg = get_txt(
-                    f"❌ Не удалось выгнать: {e}",
-                    f"❌ Failed to kick: {e}",
-                    self.is_russian
-                )
-                await interaction.response.send_message(msg, ephemeral=True)
-        else:
-            msg = get_txt(
-                "❌ Этот пользователь не находится в вашем канале.",
-                "❌ This user is not in your channel.",
+        for member in self.values:
+            if not isinstance(member, discord.Member):
+                continue
+            
+            # Security check
+            if member.guild_permissions.administrator or member.id == interaction.guild.owner_id or member.top_role >= interaction.user.top_role:
+                failed_mentions.append(member.display_name)
+                continue
+
+            if member.voice and member.voice.channel == self.channel:
+                try:
+                    await member.move_to(None)
+                    kicked_mentions.append(member.mention)
+                except Exception:
+                    failed_mentions.append(member.display_name)
+            else:
+                failed_mentions.append(member.display_name)
+
+        msgs = []
+        if kicked_mentions:
+            msgs.append(get_txt(
+                f"✅ Выгнаны из канала: {', '.join(kicked_mentions)}",
+                f"✅ Kicked from channel: {', '.join(kicked_mentions)}",
                 self.is_russian
-            )
-            await interaction.response.send_message(msg, ephemeral=True)
+            ))
+        if failed_mentions:
+            msgs.append(get_txt(
+                f"❌ Не удалось выгнать (или нет в канале/превышены права): {', '.join(failed_mentions)}",
+                f"❌ Failed to kick (or not in channel/higher role): {', '.join(failed_mentions)}",
+                self.is_russian
+            ))
+
+        await interaction.response.send_message("\n".join(msgs), ephemeral=True)
 
 
 class MuteSelect(discord.ui.UserSelect):
     def __init__(self, channel: discord.VoiceChannel, is_russian: bool):
-        placeholder = get_txt("Выберите кого мут/размут...", "Mute/unmute user...", is_russian)
-        super().__init__(placeholder=placeholder, min_values=1, max_values=1)
+        placeholder = get_txt("Выберите кого мут/размут...", "Mute/unmute users...", is_russian)
+        super().__init__(placeholder=placeholder, min_values=1, max_values=25)
         self.channel = channel
         self.is_russian = is_russian
 
     async def callback(self, interaction: discord.Interaction):
-        member = self.values[0]
-        if not isinstance(member, discord.Member):
-            msg = get_txt("❌ Пользователь не найден.", "❌ User not found.", self.is_russian)
-            await interaction.response.send_message(msg, ephemeral=True)
-            return
+        muted_mentions = []
+        unmuted_mentions = []
+        failed_mentions = []
 
-        # Security: Prevent muting administrators, owners, or members with equal/higher roles
-        if member.guild_permissions.administrator or member.id == interaction.guild.owner_id or member.top_role >= interaction.user.top_role:
-            msg = get_txt(
-                "❌ Вы не можете заглушить этого пользователя (у него равные или более высокие права).",
-                "❌ You cannot mute this user (equal or higher permissions).",
-                self.is_russian
-            )
-            await interaction.response.send_message(msg, ephemeral=True)
-            return
+        for member in self.values:
+            if not isinstance(member, discord.Member):
+                continue
 
-        if member.voice and member.voice.channel == self.channel:
-            try:
-                current_mute = member.voice.mute
-                await member.edit(mute=not current_mute)
-                status = get_txt("заглушен 🔇", "muted 🔇", self.is_russian) if not current_mute else get_txt("разглушен 🔊", "unmuted 🔊", self.is_russian)
-                msg = get_txt(
-                    f"✅ {member.mention} был {status}.",
-                    f"✅ {member.mention} was {status}.",
-                    self.is_russian
-                )
-                await interaction.response.send_message(msg, ephemeral=True)
-            except Exception as e:
-                msg = get_txt(
-                    f"❌ Не удалось изменить микрофон: {e}",
-                    f"❌ Failed to toggle mute status: {e}",
-                    self.is_russian
-                )
-                await interaction.response.send_message(msg, ephemeral=True)
-        else:
-            msg = get_txt(
-                "❌ Этот пользователь не находится в вашем канале.",
-                "❌ This user is not in your channel.",
+            # Security check
+            if member.guild_permissions.administrator or member.id == interaction.guild.owner_id or member.top_role >= interaction.user.top_role:
+                failed_mentions.append(member.display_name)
+                continue
+
+            if member.voice and member.voice.channel == self.channel:
+                try:
+                    current_mute = member.voice.mute
+                    await member.edit(mute=not current_mute)
+                    if not current_mute:
+                        muted_mentions.append(member.mention)
+                    else:
+                        unmuted_mentions.append(member.mention)
+                except Exception:
+                    failed_mentions.append(member.display_name)
+            else:
+                failed_mentions.append(member.display_name)
+
+        msgs = []
+        if muted_mentions:
+            msgs.append(get_txt(
+                f"🔇 Заглушены: {', '.join(muted_mentions)}",
+                f"🔇 Muted: {', '.join(muted_mentions)}",
                 self.is_russian
-            )
-            await interaction.response.send_message(msg, ephemeral=True)
+            ))
+        if unmuted_mentions:
+            msgs.append(get_txt(
+                f"🔊 Разглушены: {', '.join(unmuted_mentions)}",
+                f"🔊 Unmuted: {', '.join(unmuted_mentions)}",
+                self.is_russian
+            ))
+        if failed_mentions:
+            msgs.append(get_txt(
+                f"❌ Не удалось заглушить/разглушить (или не в канале/превышены права): {', '.join(failed_mentions)}",
+                f"❌ Failed to mute/unmute (or not in channel/higher role): {', '.join(failed_mentions)}",
+                self.is_russian
+            ))
+
+        await interaction.response.send_message("\n".join(msgs), ephemeral=True)
 
 
 class InviteSelect(discord.ui.UserSelect):
     def __init__(self, channel: discord.VoiceChannel, is_russian: bool):
-        placeholder = get_txt("Выберите кого пригласить...", "Select user to invite...", is_russian)
-        super().__init__(placeholder=placeholder, min_values=1, max_values=1)
+        placeholder = get_txt("Выберите кого пригласить...", "Select users to invite...", is_russian)
+        super().__init__(placeholder=placeholder, min_values=1, max_values=25)
         self.channel = channel
         self.is_russian = is_russian
 
     async def callback(self, interaction: discord.Interaction):
-        member = self.values[0]
-        if not isinstance(member, discord.Member):
-            msg = get_txt("❌ Пользователь не найден.", "❌ User not found.", self.is_russian)
-            await interaction.response.send_message(msg, ephemeral=True)
-            return
+        invited_mentions = []
+        failed_mentions = []
 
-        try:
-            overwrite = self.channel.overwrites_for(member)
-            overwrite.connect = True
-            overwrite.view_channel = True
-            await self.channel.set_permissions(member, overwrite=overwrite)
-            
-            # Generate a temporary invite link
-            try:
-                invite = await self.channel.create_invite(max_age=300, max_uses=1)
-                invite_url = invite.url
-            except Exception:
-                invite_url = None
+        for member in self.values:
+            if not isinstance(member, discord.Member):
+                continue
 
-            msg = get_txt(
-                f"✅ {member.mention} приглашен в канал.",
-                f"✅ {member.mention} has been invited to the channel.",
-                self.is_russian
-            )
-            await interaction.response.send_message(msg, ephemeral=True)
             try:
-                link_ru = f"\n👉 Ссылка для входа: {invite_url}" if invite_url else ""
-                link_en = f"\n👉 Join link: {invite_url}" if invite_url else ""
-                dm_msg = get_txt(
-                    f"✉️ Вас пригласили в приватный голосовой канал **{self.channel.name}** на сервере **{interaction.guild.name}**!{link_ru}",
-                    f"✉️ You have been invited to a private voice channel **{self.channel.name}** on server **{interaction.guild.name}**!{link_en}",
-                    self.is_russian
-                )
-                await member.send(dm_msg)
+                overwrite = self.channel.overwrites_for(member)
+                overwrite.connect = True
+                overwrite.view_channel = True
+                await self.channel.set_permissions(member, overwrite=overwrite)
+                
+                # Generate a temporary invite link
+                try:
+                    invite = await self.channel.create_invite(max_age=300, max_uses=1)
+                    invite_url = invite.url
+                except Exception:
+                    invite_url = None
+
+                invited_mentions.append(member.mention)
+
+                try:
+                    link_ru = f"\n👉 Ссылка для входа: {invite_url}" if invite_url else ""
+                    link_en = f"\n👉 Join link: {invite_url}" if invite_url else ""
+                    dm_msg = get_txt(
+                        f"✉️ Вас пригласили в приватный голосовой канал **{self.channel.name}** на сервере **{interaction.guild.name}**!{link_ru}",
+                        f"✉️ You have been invited to a private voice channel **{self.channel.name}** on server **{interaction.guild.name}**!{link_en}",
+                        self.is_russian
+                    )
+                    await member.send(dm_msg)
+                except Exception:
+                    pass
             except Exception:
-                pass
-        except Exception as e:
-            msg = get_txt(
-                f"❌ Не удалось выдать права: {e}",
-                f"❌ Failed to grant permissions: {e}",
+                failed_mentions.append(member.display_name)
+
+        msgs = []
+        if invited_mentions:
+            msgs.append(get_txt(
+                f"✅ Успешно приглашены: {', '.join(invited_mentions)}",
+                f"✅ Successfully invited: {', '.join(invited_mentions)}",
                 self.is_russian
-            )
-            await interaction.response.send_message(msg, ephemeral=True)
+            ))
+        if failed_mentions:
+            msgs.append(get_txt(
+                f"❌ Не удалось выдать права/пригласить: {', '.join(failed_mentions)}",
+                f"❌ Failed to invite: {', '.join(failed_mentions)}",
+                self.is_russian
+            ))
+
+        await interaction.response.send_message("\n".join(msgs), ephemeral=True)
 
 
 class AddFriendSelect(discord.ui.UserSelect):

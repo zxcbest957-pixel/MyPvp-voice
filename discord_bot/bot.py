@@ -3,6 +3,8 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from dotenv import load_dotenv
+import threading
+from http.server import SimpleHTTPRequestHandler, HTTPServer
 
 # Load environment variables
 load_dotenv()
@@ -718,9 +720,25 @@ async def sync_guild_commands_error(ctx, error):
         await ctx.send("❌ У вас должны быть права Администратора для синхронизации команд.", delete_after=5)
 
 
+# Web server runner for Render.com hosting to keep the Web Service alive
+def run_web_server():
+    class HealthCheckHandler(SimpleHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"Bot is online and running!")
+
+    port = int(os.getenv("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    print(f"Web server listening on port {port}")
+    server.serve_forever()
+
 # Run the Bot
 if __name__ == "__main__":
     if not TOKEN or TOKEN == "YOUR_DISCORD_BOT_TOKEN_HERE":
         print("Error: Please specify a valid DISCORD_TOKEN in the .env file.")
     else:
+        # Start web server thread
+        threading.Thread(target=run_web_server, daemon=True).start()
         bot.run(TOKEN)

@@ -326,88 +326,96 @@ class InviteSelect(discord.ui.UserSelect):
 
 class AddFriendSelect(discord.ui.UserSelect):
     def __init__(self, channel: discord.VoiceChannel, is_russian: bool):
-        placeholder = get_txt("Добавить друга в вайт-лист...", "Add friend to whitelist...", is_russian)
-        super().__init__(placeholder=placeholder, min_values=1, max_values=1)
+        placeholder = get_txt("Добавить друзей в вайт-лист...", "Add friends to whitelist...", is_russian)
+        super().__init__(placeholder=placeholder, min_values=1, max_values=25)
         self.channel = channel
         self.is_russian = is_russian
 
     async def callback(self, interaction: discord.Interaction):
-        member = self.values[0]
-        if not isinstance(member, discord.Member):
-            msg = get_txt("❌ Пользователь не найден.", "❌ User not found.", self.is_russian)
-            await interaction.response.send_message(msg, ephemeral=True)
-            return
-
         owner_id = interaction.user.id
         if owner_id not in whitelists:
             whitelists[owner_id] = set()
 
-        if member.id == owner_id:
-            msg = get_txt("❌ Вы не можете добавить себя.", "❌ You cannot add yourself.", self.is_russian)
-            await interaction.response.send_message(msg, ephemeral=True)
-            return
+        added_mentions = []
+        for member in self.values:
+            if not isinstance(member, discord.Member):
+                continue
+            if member.id == owner_id:
+                continue
 
-        whitelists[owner_id].add(member.id)
-        save_whitelist()
+            whitelists[owner_id].add(member.id)
+            added_mentions.append(member.mention)
 
-        try:
-            overwrite = self.channel.overwrites_for(member)
-            overwrite.connect = True
-            overwrite.view_channel = True
-            await self.channel.set_permissions(member, overwrite=overwrite)
-        except Exception:
-            pass
+            try:
+                overwrite = self.channel.overwrites_for(member)
+                overwrite.connect = True
+                overwrite.view_channel = True
+                await self.channel.set_permissions(member, overwrite=overwrite)
+            except Exception:
+                pass
 
-        msg = get_txt(
-            f"✅ {member.mention} добавлен в ваш вайт-лист!",
-            f"✅ {member.mention} has been added to your whitelist!",
-            self.is_russian
-        )
+        if added_mentions:
+            save_whitelist()
+            msg = get_txt(
+                f"✅ Добавлены в вайт-лист: {', '.join(added_mentions)}",
+                f"✅ Added to whitelist: {', '.join(added_mentions)}",
+                self.is_russian
+            )
+        else:
+            msg = get_txt(
+                "❌ Ни один пользователь не был добавлен (нельзя добавить себя).",
+                "❌ No users were added (you cannot add yourself).",
+                self.is_russian
+            )
         await interaction.response.send_message(msg, ephemeral=True)
 
 
 class RemoveFriendSelect(discord.ui.UserSelect):
     def __init__(self, channel: discord.VoiceChannel, is_russian: bool):
-        placeholder = get_txt("Удалить друга из вайт-листа...", "Remove friend from whitelist...", is_russian)
-        super().__init__(placeholder=placeholder, min_values=1, max_values=1)
+        placeholder = get_txt("Удалить друзей из вайт-листа...", "Remove friends from whitelist...", is_russian)
+        super().__init__(placeholder=placeholder, min_values=1, max_values=25)
         self.channel = channel
         self.is_russian = is_russian
 
     async def callback(self, interaction: discord.Interaction):
-        member = self.values[0]
-        if not isinstance(member, discord.Member):
-            msg = get_txt("❌ Пользователь не найден.", "❌ User not found.", self.is_russian)
-            await interaction.response.send_message(msg, ephemeral=True)
-            return
-
         owner_id = interaction.user.id
         owner_whitelist = whitelists.get(owner_id, set())
 
-        if member.id not in owner_whitelist:
-            msg = get_txt("❌ Этого пользователя нет в вашем вайт-листе.", "❌ This user is not in your whitelist.", self.is_russian)
-            await interaction.response.send_message(msg, ephemeral=True)
-            return
+        removed_mentions = []
+        for member in self.values:
+            if not isinstance(member, discord.Member):
+                continue
+            if member.id not in owner_whitelist:
+                continue
 
-        owner_whitelist.remove(member.id)
-        save_whitelist()
+            owner_whitelist.remove(member.id)
+            removed_mentions.append(member.mention)
 
-        try:
-            overwrite = self.channel.overwrites_for(member)
-            overwrite.connect = None
-            overwrite.view_channel = None
-            await self.channel.set_permissions(member, overwrite=overwrite)
-            
-            default_overwrite = self.channel.overwrites_for(interaction.guild.default_role)
-            if default_overwrite.connect is False and member.voice and member.voice.channel == self.channel:
-                await member.move_to(None)
-        except Exception:
-            pass
+            try:
+                overwrite = self.channel.overwrites_for(member)
+                overwrite.connect = None
+                overwrite.view_channel = None
+                await self.channel.set_permissions(member, overwrite=overwrite)
+                
+                default_overwrite = self.channel.overwrites_for(interaction.guild.default_role)
+                if default_overwrite.connect is False and member.voice and member.voice.channel == self.channel:
+                    await member.move_to(None)
+            except Exception:
+                pass
 
-        msg = get_txt(
-            f"✅ {member.mention} удален из вашего вайт-листа.",
-            f"✅ {member.mention} has been removed from your whitelist.",
-            self.is_russian
-        )
+        if removed_mentions:
+            save_whitelist()
+            msg = get_txt(
+                f"✅ Удалены из вайт-листа: {', '.join(removed_mentions)}",
+                f"✅ Removed from whitelist: {', '.join(removed_mentions)}",
+                self.is_russian
+            )
+        else:
+            msg = get_txt(
+                "❌ Ни один пользователь не был удален (их не было в списке).",
+                "❌ No users were removed (they were not in your whitelist).",
+                self.is_russian
+            )
         await interaction.response.send_message(msg, ephemeral=True)
 
 

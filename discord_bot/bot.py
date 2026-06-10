@@ -689,7 +689,36 @@ async def on_guild_channel_delete(channel):
 
 @bot.event
 async def on_voice_state_update(member, before, after):
-    # Check if member left a tracked temporary channel
+    # 1. Check if member joined a tracked temporary channel
+    if after.channel and after.channel.id in temp_channels:
+        channel = after.channel
+        owner_id = temp_channels[channel.id]
+        
+        # Check if the channel is locked (default connect permission is denied)
+        default_overwrite = channel.overwrites_for(member.guild.default_role)
+        if default_overwrite.connect is False:
+            # If the user who joined is not the owner
+            if member.id != owner_id:
+                # Check if they have an explicit user overwrite allowing them
+                user_overwrite = channel.overwrites_for(member)
+                if user_overwrite.connect is not True:
+                    try:
+                        # Kick them out of the voice channel (disconnect)
+                        await member.move_to(None)
+                        try:
+                            is_ru = (str(member.guild.preferred_locale) == "ru")
+                            msg = get_txt(
+                                "🔒 Этот канал закрыт владельцем.",
+                                "🔒 This channel is locked by the owner.",
+                                is_ru
+                            )
+                            await member.send(msg)
+                        except Exception:
+                            pass
+                    except Exception as e:
+                        print(f"Error kicking unauthorized member: {e}")
+
+    # 2. Check if member left a tracked temporary channel
     if before.channel and before.channel.id in temp_channels:
         channel = before.channel
         owner_id = temp_channels[channel.id]

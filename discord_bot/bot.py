@@ -256,6 +256,14 @@ class InviteSelect(discord.ui.UserSelect):
             overwrite.connect = True
             overwrite.view_channel = True
             await self.channel.set_permissions(member, overwrite=overwrite)
+            
+            # Generate a temporary invite link
+            try:
+                invite = await self.channel.create_invite(max_age=300, max_uses=1)
+                invite_url = invite.url
+            except Exception:
+                invite_url = None
+
             msg = get_txt(
                 f"✅ {member.mention} приглашен в канал.",
                 f"✅ {member.mention} has been invited to the channel.",
@@ -263,9 +271,11 @@ class InviteSelect(discord.ui.UserSelect):
             )
             await interaction.response.send_message(msg, ephemeral=True)
             try:
+                link_ru = f"\n👉 Ссылка для входа: {invite_url}" if invite_url else ""
+                link_en = f"\n👉 Join link: {invite_url}" if invite_url else ""
                 dm_msg = get_txt(
-                    f"✉️ Вас пригласили в приватный голосовой канал **{self.channel.name}** на сервере **{interaction.guild.name}**!",
-                    f"✉️ You have been invited to a private voice channel **{self.channel.name}** on server **{interaction.guild.name}**!",
+                    f"✉️ Вас пригласили в приватный голосовой канал **{self.channel.name}** на сервере **{interaction.guild.name}**!{link_ru}",
+                    f"✉️ You have been invited to a private voice channel **{self.channel.name}** on server **{interaction.guild.name}**!{link_en}",
                     self.is_russian
                 )
                 await member.send(dm_msg)
@@ -357,7 +367,12 @@ class VoiceControlView(discord.ui.View):
         
         self.hidden = not self.hidden
         overwrite = self.channel.overwrites_for(interaction.guild.default_role)
-        overwrite.view_channel = False if self.hidden else None
+        if self.hidden:
+            overwrite.view_channel = False
+            overwrite.connect = False
+        else:
+            overwrite.view_channel = None
+            overwrite.connect = None
         
         try:
             await self.channel.set_permissions(interaction.guild.default_role, overwrite=overwrite)

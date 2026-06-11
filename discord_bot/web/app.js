@@ -55,6 +55,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderLeaderboard();
             });
         });
+
+        // Close modal handlers
+        const modal = document.getElementById('user-modal');
+        const closeBtn = document.getElementById('modal-close');
+        
+        const closeModal = () => {
+            modal.classList.remove('active');
+            setTimeout(() => {
+                modal.style.display = 'none';
+            }, 300);
+        };
+
+        closeBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.style.display === 'flex') {
+                closeModal();
+            }
+        });
     }
 
     // Fetch list of guilds this bot is active on
@@ -230,6 +253,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="col-active">${formatRelativeTime(user.lastActive)}</div>
             `;
 
+            // Bind click to open detailed modal
+            item.addEventListener('click', () => {
+                openUserModal(user);
+            });
+
             leaderboardList.appendChild(item);
         });
     }
@@ -304,5 +332,119 @@ document.addEventListener('DOMContentLoaded', () => {
                 '"': '&quot;'
             }[tag] || tag)
         );
+    }
+
+    async function openUserModal(user) {
+        const modal = document.getElementById('user-modal');
+        const banner = document.getElementById('modal-banner');
+        
+        const avatarImg = document.getElementById('modal-avatar');
+        const avatarFallback = document.getElementById('modal-avatar-fallback');
+        const statusBadge = document.getElementById('modal-status-badge');
+        
+        const displayNameEl = document.getElementById('modal-display-name');
+        const usernameEl = document.getElementById('modal-username');
+        const badgesEl = document.getElementById('modal-badges');
+        
+        const statMessages = document.getElementById('modal-stat-messages');
+        const statVoice = document.getElementById('modal-stat-voice');
+        const statJoined = document.getElementById('modal-stat-joined');
+        const statCreated = document.getElementById('modal-stat-created');
+        
+        const rolesCount = document.getElementById('modal-roles-count');
+        const rolesList = document.getElementById('modal-roles-list');
+
+        // Reset details to show placeholders
+        banner.style.background = 'linear-gradient(135deg, var(--accent-purple), var(--accent-cyan))';
+        statusBadge.className = 'status-badge offline';
+        badgesEl.innerHTML = '';
+        statJoined.textContent = 'Загрузка...';
+        statCreated.textContent = 'Загрузка...';
+        rolesCount.textContent = '0';
+        rolesList.innerHTML = '<div class="loader-container" style="padding: 10px 0;"><div class="spinner" style="width: 20px; height: 20px; border-width: 2px;"></div></div>';
+
+        // Load basic cached profile information instantly
+        displayNameEl.textContent = user.globalName || user.username;
+        usernameEl.textContent = `@${user.username}`;
+        
+        if (user.avatarUrl) {
+            avatarImg.src = user.avatarUrl;
+            avatarImg.style.display = 'block';
+            avatarFallback.style.display = 'none';
+        } else {
+            avatarImg.style.display = 'none';
+            avatarFallback.style.display = 'flex';
+            avatarFallback.textContent = (user.globalName || user.username).charAt(0).toUpperCase();
+        }
+
+        statMessages.textContent = formatNumber(user.messagesCount);
+        statVoice.textContent = formatVoiceTime(user.voiceSeconds);
+
+        // Reveal modal with display flex, then trigger css slide scale animation
+        modal.style.display = 'flex';
+        setTimeout(() => {
+            modal.classList.add('active');
+        }, 10);
+
+        // Load live detailed Discord metadata asynchronously
+        try {
+            const response = await fetch(`/api/member?guild_id=${currentGuildId}&user_id=${user.userId}`);
+            const data = await response.json();
+
+            // Set presence status
+            statusBadge.className = `status-badge ${data.status || 'offline'}`;
+
+            // Parse formatted creation and joined dates
+            statJoined.textContent = formatDate(data.joinedAt) || 'Не на сервере';
+            statCreated.textContent = formatDate(data.createdAt) || '-';
+
+            // Set Admin/Owner badges
+            if (data.isOwner) {
+                badgesEl.innerHTML += '<span class="badge-tag badge-owner">Владелец</span>';
+            } else if (data.isAdmin) {
+                badgesEl.innerHTML += '<span class="badge-tag badge-admin">Админ</span>';
+            }
+
+            // Build dynamic colored tags list for roles
+            rolesList.innerHTML = '';
+            const roles = data.roles || [];
+            rolesCount.textContent = roles.length;
+
+            if (roles.length === 0) {
+                rolesList.innerHTML = '<span style="font-size: 0.85rem; color: var(--text-muted);">Нет ролей</span>';
+            } else {
+                // Adjust banner background to match highest priority role color
+                if (roles[0].color && roles[0].color !== '#8b8d99') {
+                    banner.style.background = roles[0].color;
+                }
+
+                roles.forEach(role => {
+                    const tag = document.createElement('div');
+                    tag.className = 'role-tag';
+                    tag.innerHTML = `<span class="role-dot" style="background-color: ${role.color}"></span>${escapeHTML(role.name)}`;
+                    rolesList.appendChild(tag);
+                });
+            }
+
+        } catch (error) {
+            console.error('Error fetching member details:', error);
+            statJoined.textContent = 'Ошибка';
+            statCreated.textContent = 'Ошибка';
+            rolesList.innerHTML = '<span style="font-size: 0.85rem; color: #e74c3c;">Ошибка загрузки</span>';
+        }
+    }
+
+    function formatDate(isoString) {
+        if (!isoString) return null;
+        try {
+            const date = new Date(isoString);
+            return date.toLocaleDateString('ru-RU', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric'
+            });
+        } catch (e) {
+            return null;
+        }
     }
 });

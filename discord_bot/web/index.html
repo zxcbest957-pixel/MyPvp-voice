@@ -125,6 +125,62 @@
             <p>&copy; 2026 Discord Server Stats &bull; Разработано для вашего сервера</p>
         </footer>
     </div>
+
+    <!-- User Details Modal -->
+    <div id="user-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card glass-card">
+            <button id="modal-close" class="modal-close-btn">&times;</button>
+            
+            <div class="modal-header">
+                <div class="modal-banner" id="modal-banner"></div>
+                <div class="modal-user-profile">
+                    <div class="modal-avatar-wrapper">
+                        <div class="default-avatar" id="modal-avatar-fallback">U</div>
+                        <img id="modal-avatar" src="" alt="Avatar" style="display: none;">
+                        <span id="modal-status-badge" class="status-badge offline"></span>
+                    </div>
+                    <div class="modal-user-names">
+                        <h2 id="modal-display-name">Имя пользователя</h2>
+                        <span id="modal-username">@username</span>
+                        <div class="modal-badges" id="modal-badges">
+                            <!-- Populated with tags -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-body">
+                <!-- Activity Stats Grid -->
+                <div class="modal-stats-grid">
+                    <div class="m-stat-card">
+                        <span class="m-stat-title">Сообщения</span>
+                        <span class="m-stat-value" id="modal-stat-messages">0</span>
+                    </div>
+                    <div class="m-stat-card">
+                        <span class="m-stat-title">Время в войсе</span>
+                        <span class="m-stat-value" id="modal-stat-voice">0м</span>
+                    </div>
+                    <div class="m-stat-card">
+                        <span class="m-stat-title">Зашел на сервер</span>
+                        <span class="m-stat-value text-small" id="modal-stat-joined">-</span>
+                    </div>
+                    <div class="m-stat-card">
+                        <span class="m-stat-title">Аккаунт создан</span>
+                        <span class="m-stat-value text-small" id="modal-stat-created">-</span>
+                    </div>
+                </div>
+                
+                <!-- Roles list -->
+                <div class="modal-roles-section">
+                    <h3>Роли на сервере (<span id="modal-roles-count">0</span>)</h3>
+                    <div class="modal-roles-list" id="modal-roles-list">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>

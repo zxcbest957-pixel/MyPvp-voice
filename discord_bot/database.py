@@ -156,3 +156,20 @@ def get_guild_stats(guild_id):
             }
         finally:
             conn.close()
+
+def reset_messages_count(guild_id):
+    with db_lock:
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE member_stats
+                SET messages_count = 0
+                WHERE guild_id = ?
+            """, (guild_id,))
+            conn.commit()
+            print(f"Message counts reset in database for guild {guild_id}")
+        except Exception as e:
+            print(f"Error resetting message counts for guild {guild_id}: {e}")
+        finally:
+            conn.close()

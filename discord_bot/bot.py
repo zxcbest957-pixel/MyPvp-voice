@@ -10,6 +10,13 @@ import urllib.parse
 import time
 import database
 import json
+import asyncio
+import sys
+import io
+
+# Force UTF-8 encoding for stdout/stderr to prevent Windows charmap print crashes
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # Load environment variables
 load_dotenv()
@@ -874,6 +881,114 @@ async def stats_command(interaction: discord.Interaction):
         
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
+async def run_full_history_sync(interaction: discord.Interaction, guild: discord.Guild, is_ru: bool):
+    try:
+        msg_start = get_txt(
+            "⏳ Начинается полная синхронизация истории сообщений. Это может занять некоторое время...",
+            "⏳ Starting full message history synchronization. This may take some time...",
+            is_ru
+        )
+        await interaction.followup.send(msg_start, ephemeral=True)
+        
+        # 1. Reset message counts
+        await asyncio.to_thread(database.reset_messages_count, guild.id)
+        
+        # 2. Sync members
+        print(f"Syncing members before full crawl: {guild.name}...")
+        async for member in guild.fetch_members(limit=None):
+            if member.bot:
+                continue
+            await asyncio.to_thread(
+                database.sync_member,
+                guild.id,
+                member.id,
+                member.name,
+                member.global_name or member.name,
+                str(member.display_avatar.url)
+            )
+            
+        # 3. Crawl history of all visible channels
+        total_channels = 0
+        total_messages = 0
+        
+        for channel in guild.text_channels:
+            perms = channel.permissions_for(guild.me)
+            if not perms.read_message_history or not perms.read_messages:
+                continue
+            
+            total_channels += 1
+            print(f"Full sync crawling: {channel.name}...")
+            try:
+                async for msg in channel.history(limit=None):
+                    if msg.author.bot:
+                        continue
+                    
+                    await asyncio.to_thread(
+                        database.update_message_count,
+                        guild.id,
+                        msg.author.id,
+                        msg.author.name,
+                        msg.author.global_name or msg.author.name,
+                        str(msg.author.display_avatar.url),
+                        1
+                    )
+                    total_messages += 1
+            except Exception as e:
+                print(f"Error crawling history in {channel.name}: {e}")
+                
+        msg_end = get_txt(
+            f"✅ Синхронизация завершена!\n"
+            f"Успешно просканировано текстовых каналов: **{total_channels}**\n"
+            f"Всего обработано сообщений: **{total_messages}**",
+            f"✅ Synchronization completed!\n"
+            f"Successfully scanned text channels: **{total_channels}**\n"
+            f"Total messages processed: **{total_messages}**",
+            is_ru
+        )
+        await interaction.followup.send(msg_end, ephemeral=True)
+        
+        # Mark guild as synced so startup crawls bypass it
+        mark_guild_synced(guild.id)
+        
+    except Exception as e:
+        print(f"Error in run_full_history_sync: {e}")
+        err_msg = get_txt(
+            f"❌ Произошла ошибка во время синхронизации: {e}",
+            f"❌ An error occurred during synchronization: {e}",
+            is_ru
+        )
+        try:
+            await interaction.followup.send(err_msg, ephemeral=True)
+        except Exception:
+            pass
+
+@bot.tree.command(name="sync-history", description="Full sync of message history for accurate stats / Полная синхронизация истории")
+@app_commands.checks.has_permissions(administrator=True)
+async def sync_history_command(interaction: discord.Interaction):
+    # Defer since crawling history takes longer than 3 seconds
+    await interaction.response.defer(ephemeral=True)
+    
+    guild = interaction.guild
+    is_ru = (interaction.locale == discord.Locale.russian)
+    
+    if not guild:
+        msg = get_txt("❌ Эта команда может быть запущена только на сервере.", "❌ This command can only be run on a server.", is_ru)
+        await interaction.followup.send(msg, ephemeral=True)
+        return
+        
+    bot.loop.create_task(run_full_history_sync(interaction, guild, is_ru))
+
+@sync_history_command.error
+async def sync_history_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.errors.MissingPermissions):
+        is_ru = (interaction.locale == discord.Locale.russian)
+        msg = get_txt(
+            "❌ Недостаточно прав для команды (нужен Администратор).",
+            "❌ Insufficient permissions (Administrator required).",
+            is_ru
+        )
+        await interaction.response.send_message(msg, ephemeral=True)
+
 
 # --- Events ---
 SYNC_FLAG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "synced_flags")
@@ -890,7 +1005,7 @@ def mark_guild_synced(guild_id):
 async def sync_and_crawl_history():
     await bot.wait_until_ready()
     # Initialize DB
-    database.init_db()
+    await asyncio.to_thread(database.init_db)
     
     for guild in bot.guilds:
         try:
@@ -899,7 +1014,8 @@ async def sync_and_crawl_history():
             async for member in guild.fetch_members(limit=None):
                 if member.bot:
                     continue
-                database.sync_member(
+                await asyncio.to_thread(
+                    database.sync_member,
                     guild.id,
                     member.id,
                     member.name,
@@ -931,13 +1047,14 @@ async def sync_and_crawl_history():
                             if msg.author.bot:
                                 continue
                             
-                            database.update_message_count(
+                            await asyncio.to_thread(
+                                database.update_message_count,
                                 guild.id,
                                 msg.author.id,
                                 msg.author.name,
                                 msg.author.global_name or msg.author.name,
                                 str(msg.author.display_avatar.url),
-                                increment=1
+                                1
                             )
                             total_crawled += 1
                     except Exception as e:
@@ -997,15 +1114,16 @@ async def on_voice_state_update(member, before, after):
             if start_time:
                 duration = time.time() - start_time
                 if duration > 0:
-                    database.update_voice_time(
-                        guild.id,
-                        member.id,
-                        member.name,
-                        member.global_name or member.name,
-                        str(member.display_avatar.url),
-                        int(duration)
-                    )
-                    print(f"Added {int(duration)}s voice time to {member.name} in {guild.name}")
+                    await asyncio.to_thread(
+                    database.update_voice_time,
+                    guild.id,
+                    member.id,
+                    member.name,
+                    member.global_name or member.name,
+                    str(member.display_avatar.url),
+                    int(duration)
+                )
+                print(f"Added {int(duration)}s voice time to {member.name} in {guild.name}")
 
     # User joined or switched channels
     if after.channel and (not before.channel or before.channel.id != after.channel.id):
@@ -1079,7 +1197,8 @@ async def on_message(message):
         return
     
     if message.guild:
-        database.update_message_count(
+        await asyncio.to_thread(
+            database.update_message_count,
             message.guild.id,
             message.author.id,
             message.author.name,
@@ -1166,6 +1285,81 @@ class DashboardHTTPHandler(BaseHTTPRequestHandler):
                 stats["guildIcon"] = ""
 
             self.wfile.write(json.dumps(stats, ensure_ascii=False).encode('utf-8'))
+            return
+
+        elif path == "/api/member":
+            guild_id_str = query.get("guild_id", [None])[0]
+            user_id_str = query.get("user_id", [None])[0]
+            
+            if not guild_id_str or not user_id_str:
+                self.send_error(400, "Missing guild_id or user_id")
+                return
+                
+            try:
+                guild_id = int(guild_id_str)
+                user_id = int(user_id_str)
+            except ValueError:
+                self.send_error(400, "Invalid guild_id or user_id")
+                return
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+
+            member_info = {
+                "userId": str(user_id),
+                "username": f"User_{user_id}",
+                "globalName": f"User_{user_id}",
+                "avatarUrl": "",
+                "joinedAt": None,
+                "createdAt": None,
+                "status": "offline",
+                "isOwner": False,
+                "isAdmin": False,
+                "roles": []
+            }
+
+            guild = bot.get_guild(guild_id)
+            if guild:
+                member = guild.get_member(user_id)
+                if not member:
+                    try:
+                        future = asyncio.run_coroutine_threadsafe(guild.fetch_member(user_id), bot.loop)
+                        member = future.result(timeout=2.0)
+                    except Exception:
+                        member = None
+
+                if member:
+                    status_str = str(member.status)
+                    
+                    roles_list = []
+                    for r in reversed(member.roles):
+                        if r.is_default():
+                            continue
+                        
+                        color_hex = f"#{r.color.value:06x}" if r.color.value != 0 else "#8b8d99"
+                        roles_list.append({
+                            "name": r.name,
+                            "color": color_hex
+                        })
+                    
+                    is_admin = member.guild_permissions.administrator
+                    is_owner = (member.id == guild.owner_id)
+
+                    member_info.update({
+                        "username": member.name,
+                        "globalName": member.global_name or member.name,
+                        "avatarUrl": str(member.display_avatar.url),
+                        "joinedAt": member.joined_at.isoformat() if member.joined_at else None,
+                        "createdAt": member.created_at.isoformat() if member.created_at else None,
+                        "status": status_str,
+                        "isOwner": is_owner,
+                        "isAdmin": is_admin,
+                        "roles": roles_list
+                    })
+
+            self.wfile.write(json.dumps(member_info, ensure_ascii=False).encode('utf-8'))
             return
 
         # Handle Static files

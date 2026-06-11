@@ -4,9 +4,12 @@ from discord.ext import commands
 from discord import app_commands
 from dotenv import load_dotenv
 import threading
-from http.server import SimpleHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import urllib.request
+import urllib.parse
 import time
+import database
+import json
 
 # Load environment variables
 load_dotenv()
@@ -51,6 +54,8 @@ import json
 temp_channels = {}
 # Whitelist memory dictionary: {owner_id: set(friend_ids)}
 whitelists = {}
+# Voice start times cache for dynamic tracking: {(guild_id, user_id): start_time}
+voice_start_times = {}
 
 WHITELIST_FILE = "whitelist.json"
 
@@ -839,6 +844,82 @@ bot.tree.add_command(CreateEnGroup())
 
 
 # --- Events ---
+SYNC_FLAG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "synced_flags")
+
+def is_guild_synced(guild_id):
+    os.makedirs(SYNC_FLAG_DIR, exist_ok=True)
+    return os.path.exists(os.path.join(SYNC_FLAG_DIR, f"{guild_id}.flag"))
+
+def mark_guild_synced(guild_id):
+    os.makedirs(SYNC_FLAG_DIR, exist_ok=True)
+    with open(os.path.join(SYNC_FLAG_DIR, f"{guild_id}.flag"), "w") as f:
+        f.write("synced")
+
+async def sync_and_crawl_history():
+    await bot.wait_until_ready()
+    # Initialize DB
+    database.init_db()
+    
+    for guild in bot.guilds:
+        try:
+            # 1. Sync member list and profiles
+            print(f"Syncing members for guild: {guild.name} ({guild.id})...")
+            async for member in guild.fetch_members(limit=None):
+                if member.bot:
+                    continue
+                database.sync_member(
+                    guild.id,
+                    member.id,
+                    member.name,
+                    member.global_name or member.name,
+                    str(member.display_avatar.url)
+                )
+
+            # 2. Track already active voice users on start
+            for voice_channel in guild.voice_channels:
+                for member in voice_channel.members:
+                    if member.bot:
+                        continue
+                    voice_key = (guild.id, member.id)
+                    if voice_key not in voice_start_times:
+                        voice_start_times[voice_key] = time.time()
+                        print(f"Registered initial voice timer for {member.name} in {voice_channel.name}")
+
+            # 3. Message crawl (seed stats from history)
+            if not is_guild_synced(guild.id):
+                print(f"Crawling message history for guild: {guild.name} to seed database...")
+                total_crawled = 0
+                for channel in guild.text_channels:
+                    perms = channel.permissions_for(guild.me)
+                    if not perms.read_message_history or not perms.read_messages:
+                        continue
+                    
+                    try:
+                        async for msg in channel.history(limit=100):
+                            if msg.author.bot:
+                                continue
+                            
+                            database.update_message_count(
+                                guild.id,
+                                msg.author.id,
+                                msg.author.name,
+                                msg.author.global_name or msg.author.name,
+                                str(msg.author.display_avatar.url),
+                                increment=1
+                            )
+                            total_crawled += 1
+                    except Exception as e:
+                        print(f"Error crawling channel {channel.name}: {e}")
+                
+                mark_guild_synced(guild.id)
+                print(f"Finished crawling history for {guild.name}. Seeded {total_crawled} messages.")
+            else:
+                print(f"Guild {guild.name} message history already synced. Skipping crawl.")
+
+        except Exception as e:
+            print(f"Error syncing guild {guild.name}: {e}")
+    print("Member sync and history crawl completed.")
+
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user.name} ({bot.user.id})")
@@ -856,6 +937,9 @@ async def on_ready():
     for guild in bot.guilds:
         await auto_create_setup_channel(guild)
 
+    # Start background member synchronization and history crawl
+    bot.loop.create_task(sync_and_crawl_history())
+
 @bot.event
 async def on_guild_join(guild):
     # Auto-setup panel channel when joining a new server
@@ -870,6 +954,33 @@ async def on_guild_channel_delete(channel):
 
 @bot.event
 async def on_voice_state_update(member, before, after):
+    # Track voice activity duration
+    guild = member.guild
+    
+    # User left or switched channels
+    if before.channel and (not after.channel or before.channel.id != after.channel.id):
+        if not member.bot:
+            voice_key = (guild.id, member.id)
+            start_time = voice_start_times.pop(voice_key, None)
+            if start_time:
+                duration = time.time() - start_time
+                if duration > 0:
+                    database.update_voice_time(
+                        guild.id,
+                        member.id,
+                        member.name,
+                        member.global_name or member.name,
+                        str(member.display_avatar.url),
+                        int(duration)
+                    )
+                    print(f"Added {int(duration)}s voice time to {member.name} in {guild.name}")
+
+    # User joined or switched channels
+    if after.channel and (not before.channel or before.channel.id != after.channel.id):
+        if not member.bot:
+            voice_key = (guild.id, member.id)
+            voice_start_times[voice_key] = time.time()
+
     # 1. Check if member joined a tracked temporary channel
     if after.channel and after.channel.id in temp_channels:
         channel = after.channel
@@ -930,6 +1041,22 @@ async def on_voice_state_update(member, before, after):
             except Exception as e:
                 print(f"Error sending transfer message: {e}")
 
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+    
+    if message.guild:
+        database.update_message_count(
+            message.guild.id,
+            message.author.id,
+            message.author.name,
+            message.author.global_name or message.author.name,
+            str(message.author.display_avatar.url)
+        )
+    
+    await bot.process_commands(message)
+
 
 # --- Admin Text Sync Command ---
 @bot.command(name="sync")
@@ -948,17 +1075,105 @@ async def sync_guild_commands_error(ctx, error):
         await ctx.send("❌ У вас должны быть права Администратора для синхронизации команд.", delete_after=5)
 
 
-# Web server runner for Render.com hosting to keep the Web Service alive
-def run_web_server():
-    class HealthCheckHandler(SimpleHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header("Content-type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"Bot is online and running!")
+# Web server runner for Render.com hosting and Web Dashboard
+class DashboardHTTPHandler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        # Prevent console cluttering with health checks and static requests
+        pass
 
+    def do_GET(self):
+        parsed_path = urllib.parse.urlparse(self.path)
+        path = parsed_path.path
+        query = urllib.parse.parse_qs(parsed_path.query)
+
+        # Handle API routes
+        if path == "/api/guilds":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            
+            guilds_data = []
+            for g in bot.guilds:
+                icon_url = str(g.icon.url) if g.icon else ""
+                guilds_data.append({
+                    "id": str(g.id),
+                    "name": g.name,
+                    "iconUrl": icon_url,
+                    "memberCount": g.member_count
+                })
+            self.wfile.write(json.dumps(guilds_data, ensure_ascii=False).encode('utf-8'))
+            return
+
+        elif path == "/api/stats":
+            guild_id_str = query.get("guild_id", [None])[0]
+            if not guild_id_str:
+                if bot.guilds:
+                    guild_id = bot.guilds[0].id
+                else:
+                    guild_id = 0
+            else:
+                try:
+                    guild_id = int(guild_id_str)
+                except ValueError:
+                    guild_id = 0
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+
+            stats = database.get_guild_stats(guild_id)
+            
+            guild = bot.get_guild(guild_id)
+            if guild:
+                stats["guildName"] = guild.name
+                stats["guildIcon"] = str(guild.icon.url) if guild.icon else ""
+            else:
+                stats["guildName"] = "Unknown Guild"
+                stats["guildIcon"] = ""
+
+            self.wfile.write(json.dumps(stats, ensure_ascii=False).encode('utf-8'))
+            return
+
+        # Handle Static files
+        base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+        
+        safe_path = path.lstrip("/")
+        if not safe_path or safe_path == "index.html":
+            file_path = os.path.join(base_dir, "index.html")
+            content_type = "text/html; charset=utf-8"
+        elif safe_path == "styles.css":
+            file_path = os.path.join(base_dir, "styles.css")
+            content_type = "text/css; charset=utf-8"
+        elif safe_path == "app.js":
+            file_path = os.path.join(base_dir, "app.js")
+            content_type = "application/javascript; charset=utf-8"
+        else:
+            self.send_error(404, "File Not Found")
+            return
+
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, "rb") as f:
+                    self.send_response(200)
+                    self.send_header("Content-Type", content_type)
+                    self.end_headers()
+                    self.wfile.write(f.read())
+            except Exception as e:
+                self.send_error(500, f"Internal Server Error: {e}")
+        else:
+            if safe_path == "":
+                self.send_response(200)
+                self.send_header("Content-type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"Bot is online. Dashboard web/ files are not yet created.")
+            else:
+                self.send_error(404, "File Not Found")
+
+def run_web_server():
     port = int(os.getenv("PORT", 8080))
-    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    server = HTTPServer(("0.0.0.0", port), DashboardHTTPHandler)
     print(f"Web server listening on port {port}")
     server.serve_forever()
 

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discord Server Stats Dashboard</title>
+    <!-- Google Fonts: Outfit for sleek, modern appearance -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="glow-overlay"></div>
+    <div class="dashboard-container">
+        <!-- Sidebar / Header controls -->
+        <header class="dashboard-header">
+            <div class="logo-area">
+                <div class="avatar-ring" id="server-icon-container">
+                    <div class="default-server-avatar" id="server-avatar-fallback">DS</div>
+                    <img id="server-avatar" src="" alt="Server Icon" style="display: none;">
+                </div>
+                <div class="logo-text">
+                    <h1 id="server-name">Загрузка сервера...</h1>
+                    <p class="subtitle">Панель статистики активности пользователей</p>
+                </div>
+            </div>
+            
+            <div class="header-controls">
+                <div class="control-group">
+                    <label for="guild-select">Выберите сервер</label>
+                    <select id="guild-select" class="premium-select">
+                        <!-- Populated by JS -->
+                    </select>
+                </div>
+            </div>
+        </header>
+
+        <!-- Stats Overview Cards -->
+        <section class="stats-overview">
+            <div class="stat-card glass-card">
+                <div class="stat-icon-wrapper blue-glow">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="stat-svg"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                </div>
+                <div class="stat-info">
+                    <h3>Всего участников</h3>
+                    <p id="stat-total-members" class="stat-value">0</p>
+                    <span class="stat-trend text-blue">Синхронизировано</span>
+                </div>
+            </div>
+
+            <div class="stat-card glass-card">
+                <div class="stat-icon-wrapper green-glow">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="stat-svg"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                </div>
+                <div class="stat-info">
+                    <h3>Сообщений отправлено</h3>
+                    <p id="stat-total-messages" class="stat-value">0</p>
+                    <span class="stat-trend text-green">В текстовых чатах</span>
+                </div>
+            </div>
+
+            <div class="stat-card glass-card">
+                <div class="stat-icon-wrapper purple-glow">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="stat-svg"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+                </div>
+                <div class="stat-info">
+                    <h3>Время в голосовых</h3>
+                    <p id="stat-total-voice" class="stat-value">0ч</p>
+                    <span class="stat-trend text-purple">Суммарная активность</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Main Leaderboard Section -->
+        <main class="leaderboard-section glass-card">
+            <!-- Filter Bar -->
+            <div class="leaderboard-filter-bar">
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="all">
+                        <span>🏆 Рекумендуемый топ</span>
+                    </button>
+                    <button class="tab-btn" data-tab="voice">
+                        <span>🎙️ Топ в войсах</span>
+                    </button>
+                    <button class="tab-btn" data-tab="messages">
+                        <span>💬 Топ по сообщениям</span>
+                    </button>
+                </div>
+
+                <div class="search-box">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <input type="text" id="user-search" placeholder="Поиск пользователя...">
+                </div>
+            </div>
+
+            <!-- Table Header -->
+            <div class="leaderboard-header-row">
+                <div class="col-rank">Ранг</div>
+                <div class="col-user">Пользователь</div>
+                <div class="col-rating">Уровень активности</div>
+                <div class="col-messages">Сообщения</div>
+                <div class="col-voice">Время в войсе</div>
+                <div class="col-active">Активность</div>
+            </div>
+
+            <!-- Loader -->
+            <div id="loader" class="loader-container">
+                <div class="spinner"></div>
+                <p>Загрузка статистики...</p>
+            </div>
+
+            <!-- Leaderboard Items Container -->
+            <div id="leaderboard-list" class="leaderboard-list">
+                <!-- Populated dynamically by JS -->
+            </div>
+            
+            <!-- Empty state -->
+            <div id="empty-state" class="empty-state" style="display: none;">
+                <div class="empty-icon">📂</div>
+                <h3>Нет данных</h3>
+                <p>Ни один пользователь еще не проявил активность на этом сервере.</p>
+            </div>
+        </main>
+
+        <footer class="dashboard-footer">
+            <p>&copy; 2026 Discord Server Stats &bull; Разработано для вашего сервера</p>
+        </footer>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

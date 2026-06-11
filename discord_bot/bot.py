@@ -5,6 +5,8 @@ from discord import app_commands
 from dotenv import load_dotenv
 import threading
 from http.server import SimpleHTTPRequestHandler, HTTPServer
+import urllib.request
+import time
 
 # Load environment variables
 load_dotenv()
@@ -960,6 +962,27 @@ def run_web_server():
     print(f"Web server listening on port {port}")
     server.serve_forever()
 
+def self_ping():
+    # Wait 30 seconds for the server to spin up completely
+    time.sleep(30)
+    url = os.getenv("RENDER_EXTERNAL_URL")
+    if not url:
+        print("self_ping: RENDER_EXTERNAL_URL environment variable is not set. Cannot self-ping.")
+        return
+    
+    print(f"self_ping: Started self-pinging loop for {url}")
+    while True:
+        try:
+            # Send HTTP GET request to self
+            with urllib.request.urlopen(url) as response:
+                status = response.getcode()
+                print(f"self_ping: Successfully pinged self. HTTP Status: {status}")
+        except Exception as e:
+            print(f"self_ping: Error pinging self: {e}")
+        
+        # Ping every 10 minutes (600 seconds) to prevent Render's 15 min sleep
+        time.sleep(600)
+
 # Run the Bot
 if __name__ == "__main__":
     if not TOKEN or TOKEN == "YOUR_DISCORD_BOT_TOKEN_HERE":
@@ -967,4 +990,6 @@ if __name__ == "__main__":
     else:
         # Start web server thread
         threading.Thread(target=run_web_server, daemon=True).start()
+        # Start self-pinging thread
+        threading.Thread(target=self_ping, daemon=True).start()
         bot.run(TOKEN)

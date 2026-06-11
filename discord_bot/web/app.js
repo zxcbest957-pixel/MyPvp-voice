@@ -152,6 +152,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Store user list
             leaderboardData = data.leaderboard || [];
             
+            // Render voice sidebar
+            renderVoiceSidebar(data.voiceStates || []);
+            
             loader.style.display = 'none';
             renderLeaderboard();
         } catch (error) {
@@ -446,5 +449,76 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {
             return null;
         }
+    }
+
+    function renderVoiceSidebar(voiceStates) {
+        const voiceList = document.getElementById('voice-channels-list');
+        const emptyState = document.getElementById('voice-empty-state');
+        
+        voiceList.innerHTML = '';
+        
+        if (!voiceStates || voiceStates.length === 0) {
+            emptyState.style.display = 'flex';
+            voiceList.style.display = 'none';
+            return;
+        }
+        
+        emptyState.style.display = 'none';
+        voiceList.style.display = 'flex';
+        
+        voiceStates.forEach(channel => {
+            const channelItem = document.createElement('div');
+            channelItem.className = 'voice-channel-item';
+            
+            let membersHTML = '';
+            channel.members.forEach(member => {
+                let avatarHTML = `<div class="voice-member-default-avatar">${(member.globalName || member.username || 'U').charAt(0).toUpperCase()}</div>`;
+                if (member.avatarUrl) {
+                    avatarHTML = `<img class="voice-member-avatar" src="${member.avatarUrl}" alt="Avatar" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                  <div class="voice-member-default-avatar" style="display:none;">${(member.globalName || member.username || 'U').charAt(0).toUpperCase()}</div>`;
+                }
+                
+                membersHTML += `
+                    <div class="voice-member-row" data-user-id="${member.userId}" data-username="${escapeHTML(member.username)}" data-global-name="${escapeHTML(member.globalName)}" data-avatar-url="${member.avatarUrl}">
+                        ${avatarHTML}
+                        <span class="voice-member-name">${escapeHTML(member.globalName || member.username)}</span>
+                    </div>
+                `;
+            });
+            
+            channelItem.innerHTML = `
+                <div class="voice-channel-name">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                    <span>${escapeHTML(channel.channelName)}</span>
+                </div>
+                <div class="voice-channel-members">
+                    ${membersHTML}
+                </div>
+            `;
+            
+            // Bind click handlers to member rows in the sidebar
+            channelItem.querySelectorAll('.voice-member-row').forEach(row => {
+                row.addEventListener('click', () => {
+                    const userId = row.getAttribute('data-user-id');
+                    const username = row.getAttribute('data-username');
+                    const globalName = row.getAttribute('data-global-name');
+                    const avatarUrl = row.getAttribute('data-avatar-url');
+                    
+                    const existingUser = leaderboardData.find(u => u.userId === userId);
+                    const userObj = existingUser || {
+                        userId: userId,
+                        username: username,
+                        globalName: globalName,
+                        avatarUrl: avatarUrl,
+                        messagesCount: 0,
+                        voiceSeconds: 0
+                    };
+                    
+                    openUserModal(userObj);
+                });
+            });
+            
+            voiceList.appendChild(channelItem);
+        });
     }
 });

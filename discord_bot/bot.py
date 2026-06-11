@@ -1280,9 +1280,33 @@ class DashboardHTTPHandler(BaseHTTPRequestHandler):
             if guild:
                 stats["guildName"] = guild.name
                 stats["guildIcon"] = str(guild.icon.url) if guild.icon else ""
+                
+                # Fetch active voice channels and their human members
+                voice_states = []
+                for channel in guild.voice_channels:
+                    if len(channel.members) > 0:
+                        members_list = []
+                        for m in channel.members:
+                            if m.bot:
+                                continue
+                            members_list.append({
+                                "userId": str(m.id),
+                                "username": m.name,
+                                "globalName": m.global_name or m.name,
+                                "avatarUrl": str(m.display_avatar.url),
+                                "status": str(m.status)
+                            })
+                        if len(members_list) > 0:
+                            voice_states.append({
+                                "channelId": str(channel.id),
+                                "channelName": channel.name,
+                                "members": members_list
+                            })
+                stats["voiceStates"] = voice_states
             else:
                 stats["guildName"] = "Unknown Guild"
                 stats["guildIcon"] = ""
+                stats["voiceStates"] = []
 
             self.wfile.write(json.dumps(stats, ensure_ascii=False).encode('utf-8'))
             return

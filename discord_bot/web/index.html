@@ -70,57 +70,74 @@
             </div>
         </section>
 
-        <!-- Main Leaderboard Section -->
-        <main class="leaderboard-section glass-card">
-            <!-- Filter Bar -->
-            <div class="leaderboard-filter-bar">
-                <div class="tabs">
-                    <button class="tab-btn active" data-tab="all">
-                        <span>🏆 Рекумендуемый топ</span>
-                    </button>
-                    <button class="tab-btn" data-tab="voice">
-                        <span>🎙️ Топ в войсах</span>
-                    </button>
-                    <button class="tab-btn" data-tab="messages">
-                        <span>💬 Топ по сообщениям</span>
-                    </button>
+        <!-- Main Area: Grid of Leaderboard + Sidebar -->
+        <div class="dashboard-main-grid">
+            <!-- Main Leaderboard Section -->
+            <main class="leaderboard-section glass-card">
+                <!-- Filter Bar -->
+                <div class="leaderboard-filter-bar">
+                    <div class="tabs">
+                        <button class="tab-btn active" data-tab="all">
+                            <span>🏆 Рекумендуемый топ</span>
+                        </button>
+                        <button class="tab-btn" data-tab="voice">
+                            <span>🎙️ Топ в войсах</span>
+                        </button>
+                        <button class="tab-btn" data-tab="messages">
+                            <span>💬 Топ по сообщениям</span>
+                        </button>
+                    </div>
+
+                    <div class="search-box">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        <input type="text" id="user-search" placeholder="Поиск пользователя...">
+                    </div>
                 </div>
 
-                <div class="search-box">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                    <input type="text" id="user-search" placeholder="Поиск пользователя...">
+                <!-- Table Header -->
+                <div class="leaderboard-header-row">
+                    <div class="col-rank">Ранг</div>
+                    <div class="col-user">Пользователь</div>
+                    <div class="col-rating">Уровень активности</div>
+                    <div class="col-messages">Сообщения</div>
+                    <div class="col-voice">Время в войсе</div>
+                    <div class="col-active">Активность</div>
                 </div>
-            </div>
 
-            <!-- Table Header -->
-            <div class="leaderboard-header-row">
-                <div class="col-rank">Ранг</div>
-                <div class="col-user">Пользователь</div>
-                <div class="col-rating">Уровень активности</div>
-                <div class="col-messages">Сообщения</div>
-                <div class="col-voice">Время в войсе</div>
-                <div class="col-active">Активность</div>
-            </div>
+                <!-- Loader -->
+                <div id="loader" class="loader-container">
+                    <div class="spinner"></div>
+                    <p>Загрузка статистики...</p>
+                </div>
 
-            <!-- Loader -->
-            <div id="loader" class="loader-container">
-                <div class="spinner"></div>
-                <p>Загрузка статистики...</p>
-            </div>
+                <!-- Leaderboard Items Container -->
+                <div id="leaderboard-list" class="leaderboard-list">
+                    <!-- Populated dynamically by JS -->
+                </div>
+                
+                <!-- Empty state -->
+                <div id="empty-state" class="empty-state" style="display: none;">
+                    <div class="empty-icon">📂</div>
+                    <h3>Нет данных</h3>
+                    <p>Ни один пользователь еще не проявил активность на этом сервере.</p>
+                </div>
+            </main>
 
-            <!-- Leaderboard Items Container -->
-            <div id="leaderboard-list" class="leaderboard-list">
-                <!-- Populated dynamically by JS -->
-            </div>
-            
-            <!-- Empty state -->
-            <div id="empty-state" class="empty-state" style="display: none;">
-                <div class="empty-icon">📂</div>
-                <h3>Нет данных</h3>
-                <p>Ни один пользователь еще не проявил активность на этом сервере.</p>
-            </div>
-        </main>
-
+            <!-- Sidebar: Live Voice Channels -->
+            <aside class="voice-sidebar glass-card">
+                <div class="sidebar-header">
+                    <h2>🎙️ В войсе сейчас</h2>
+                    <span class="pulse-indicator"></span>
+                </div>
+                <div id="voice-channels-list" class="voice-channels-list">
+                    <!-- Populated dynamically by JS -->
+                </div>
+                <div id="voice-empty-state" class="voice-empty-state">
+                    <div class="empty-voice-icon">💤</div>
+                    <p>Все каналы пусты</p>
+                </div>
+            </aside>
+        </div>
         <footer class="dashboard-footer">
             <p>&copy; 2026 Discord Server Stats &bull; Разработано для вашего сервера</p>
         </footer>

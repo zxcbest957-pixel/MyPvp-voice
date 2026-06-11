@@ -842,6 +842,38 @@ bot.tree.add_command(SetupGroup())
 bot.tree.add_command(CreateRuGroup())
 bot.tree.add_command(CreateEnGroup())
 
+@bot.tree.command(name="stats", description="Link to the server statistics dashboard / Ссылка на статистику сервера")
+async def stats_command(interaction: discord.Interaction):
+    is_russian = (interaction.locale == discord.Locale.russian)
+    
+    web_url = os.getenv("RENDER_EXTERNAL_URL")
+    if not web_url:
+        web_url = "http://localhost:8080"
+        
+    full_url = f"{web_url}/?guild_id={interaction.guild.id}" if interaction.guild else web_url
+    
+    title = get_txt("📈 Статистика сервера", "📈 Server Statistics", is_russian)
+    desc_ru = (
+        f"Посмотреть рейтинг активности участников, топ в голосовых каналах и чатах "
+        f"можно на нашем сайте:\n\n"
+        f"👉 **[Открыть панель статистики]({full_url})**"
+    )
+    desc_en = (
+        f"You can view the member activity leaderboard, top voice, and chat stats "
+        f"on our dashboard website:\n\n"
+        f"👉 **[Open Statistics Dashboard]({full_url})**"
+    )
+    
+    embed = discord.Embed(
+        title=title,
+        description=get_txt(desc_ru, desc_en, is_russian),
+        color=discord.Color.blurple()
+    )
+    if interaction.guild and interaction.guild.icon:
+        embed.set_thumbnail(url=interaction.guild.icon.url)
+        
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 # --- Events ---
 SYNC_FLAG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "synced_flags")

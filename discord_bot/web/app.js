@@ -79,8 +79,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 guildSelect.appendChild(option);
             });
 
-            // Set current active guild to first
-            currentGuildId = guilds[0].id;
+            // Check if there is a guild_id parameter in the URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const queryGuildId = urlParams.get('guild_id');
+            
+            let selectedGuildId = guilds[0].id;
+            // Validate if the queryGuildId is in the fetched guilds list
+            if (queryGuildId && guilds.some(g => g.id === queryGuildId)) {
+                selectedGuildId = queryGuildId;
+            }
+            
+            guildSelect.value = selectedGuildId;
+            currentGuildId = selectedGuildId;
             fetchStats(currentGuildId);
         } catch (error) {
             console.error('Error fetching guilds:', error);

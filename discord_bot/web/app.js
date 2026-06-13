@@ -30,11 +30,49 @@ document.addEventListener('DOMContentLoaded', () => {
     init();
 
     async function init() {
+        loadSavedTheme();
         setupEventListeners();
         await fetchGuilds();
     }
 
+    function loadSavedTheme() {
+        const savedTheme = localStorage.getItem('selected-theme') || 'cyan';
+        applyTheme(savedTheme);
+    }
+
+    function applyTheme(theme) {
+        // Remove previous theme classes
+        document.body.className = '';
+        if (theme !== 'cyan') {
+            document.body.classList.add(`theme-${theme}`);
+        }
+
+        // Update active class on selector dots
+        const dots = document.querySelectorAll('.theme-dot');
+        dots.forEach(dot => {
+            if (dot.getAttribute('data-theme') === theme) {
+                dot.classList.add('active');
+            } else {
+                dot.classList.remove('active');
+            }
+        });
+
+        localStorage.setItem('selected-theme', theme);
+    }
+
     function setupEventListeners() {
+        // Theme customization selection handler
+        const themeSelector = document.getElementById('theme-selector');
+        if (themeSelector) {
+            themeSelector.addEventListener('click', (e) => {
+                const dot = e.target.closest('.theme-dot');
+                if (dot) {
+                    const theme = dot.getAttribute('data-theme');
+                    applyTheme(theme);
+                }
+            });
+        }
+
         // Dropdown guild selector
         guildSelect.addEventListener('change', (e) => {
             currentGuildId = e.target.value;

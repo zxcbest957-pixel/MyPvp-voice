@@ -160,6 +160,18 @@ body {
     box-shadow: 0 0 20px rgba(0, 242, 254, 0.2);
 }
 
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+}
+
 .control-group label {
     font-size: 0.8rem;
     font-weight: 700;
@@ -167,6 +179,65 @@ body {
     color: var(--text-muted);
     letter-spacing: 1.2px;
     margin-bottom: 6px;
+}
+
+.theme-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid var(--card-border);
+    padding: 10px 16px;
+    border-radius: 16px;
+    height: 48px;
+}
+
+.theme-dot {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: all var(--transition-speed);
+    box-shadow: inset 0 0 4px rgba(0,0,0,0.5);
+}
+
+.theme-dot:hover {
+    transform: scale(1.2);
+}
+
+.theme-dot.active {
+    border-color: #ffffff;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+    transform: scale(1.1);
+}
+
+.dot-cyan { background-color: #00f2fe; }
+.dot-purple { background-color: #9b51e0; }
+.dot-green { background-color: #10b981; }
+.dot-gold { background-color: #f59e0b; }
+.dot-pink { background-color: #ff007f; }
+
+/* Theme Overrides */
+body.theme-purple {
+    --accent-cyan: #9b51e0;
+    --accent-cyan-glow: rgba(155, 81, 224, 0.25);
+    --accent-blue: #7000ff;
+}
+body.theme-green {
+    --accent-cyan: #10b981;
+    --accent-cyan-glow: rgba(16, 185, 129, 0.25);
+    --accent-blue: #059669;
+}
+body.theme-gold {
+    --accent-cyan: #f59e0b;
+    --accent-cyan-glow: rgba(245, 158, 11, 0.25);
+    --accent-blue: #d97706;
+}
+body.theme-pink {
+    --accent-cyan: #ff007f;
+    --accent-cyan-glow: rgba(255, 0, 127, 0.25);
+    --accent-blue: #e00070;
 }
 
 /* Stats Overview Cards */

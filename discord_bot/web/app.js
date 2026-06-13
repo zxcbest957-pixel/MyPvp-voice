@@ -455,6 +455,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const modal = document.getElementById('user-modal');
         const banner = document.getElementById('modal-banner');
         
+        const avatarWrapper = modal.querySelector('.modal-avatar-wrapper');
         const avatarImg = document.getElementById('modal-avatar');
         const avatarFallback = document.getElementById('modal-avatar-fallback');
         const statusBadge = document.getElementById('modal-status-badge');
@@ -472,7 +473,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const rolesList = document.getElementById('modal-roles-list');
 
         // Reset details to show placeholders
-        banner.style.background = 'linear-gradient(135deg, var(--accent-purple), var(--accent-cyan))';
+        banner.style.removeProperty('--banner-color');
+        banner.style.background = '';
+        avatarWrapper.className = 'modal-avatar-wrapper offline';
         statusBadge.className = 'status-badge offline';
         badgesEl.innerHTML = '';
         statJoined.textContent = 'Загрузка...';
@@ -508,8 +511,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`/api/member?guild_id=${currentGuildId}&user_id=${user.userId}`);
             const data = await response.json();
 
-            // Set presence status
-            statusBadge.className = `status-badge ${data.status || 'offline'}`;
+            // Set presence status on badge and avatar wrapper
+            const presence = data.status || 'offline';
+            statusBadge.className = `status-badge ${presence}`;
+            avatarWrapper.className = `modal-avatar-wrapper ${presence}`;
 
             // Parse formatted creation and joined dates
             statJoined.textContent = formatDate(data.joinedAt) || 'Не на сервере';
@@ -530,15 +535,21 @@ document.addEventListener('DOMContentLoaded', () => {
             if (roles.length === 0) {
                 rolesList.innerHTML = '<span style="font-size: 0.85rem; color: var(--text-muted);">Нет ролей</span>';
             } else {
-                // Adjust banner background to match highest priority role color
+                // Adjust banner background to match highest priority role color with gradient overlay
                 if (roles[0].color && roles[0].color !== '#8b8d99') {
-                    banner.style.background = roles[0].color;
+                    banner.style.setProperty('--banner-color', roles[0].color);
                 }
 
                 roles.forEach(role => {
                     const tag = document.createElement('div');
                     tag.className = 'role-tag';
-                    tag.innerHTML = `<span class="role-dot" style="background-color: ${role.color}"></span>${escapeHTML(role.name)}`;
+                    
+                    const roleColor = role.color || '#8b8d99';
+                    tag.style.color = roleColor;
+                    tag.style.borderColor = roleColor + '44'; // 27% alpha hex
+                    tag.style.backgroundColor = roleColor + '15'; // 8% alpha hex
+                    
+                    tag.innerHTML = `<span class="role-dot" style="background-color: ${roleColor}"></span>${escapeHTML(role.name)}`;
                     rolesList.appendChild(tag);
                 });
             }

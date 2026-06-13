@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const leaderboardList = document.getElementById('leaderboard-list');
     const loader = document.getElementById('loader');
     const emptyState = document.getElementById('empty-state');
+    const podiumContainer = document.getElementById('podium-container');
 
     // Initial load
     init();
@@ -167,6 +168,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Render leaderboard lists based on current filters, tabs, searches
     function renderLeaderboard() {
         leaderboardList.innerHTML = '';
+        podiumContainer.innerHTML = '';
+        podiumContainer.style.display = 'none';
         
         // 1. Filter by search query
         let filtered = leaderboardData.filter(user => {
@@ -202,17 +205,90 @@ document.addEventListener('DOMContentLoaded', () => {
         const maxVoice = Math.max(...leaderboardData.map(u => u.voiceSeconds), 1);
         const maxMessages = Math.max(...leaderboardData.map(u => u.messagesCount), 1);
 
-        // 3. Render items
-        filtered.forEach((user, index) => {
-            const rank = index + 1;
+        let listStartIndex = 0;
+
+        // 3. Render Podium if search query is empty and we have data
+        if (!searchQuery && filtered.length > 0) {
+            podiumContainer.style.display = 'flex';
+            
+            // Extract top 3
+            const topUsers = filtered.slice(0, 3);
+            listStartIndex = topUsers.length;
+
+            // Re-order top 3 so center is 1st place: [2nd, 1st, 3rd]
+            const orderedPodium = [];
+            if (topUsers[1]) orderedPodium.push({ user: topUsers[1], rank: 2 });
+            if (topUsers[0]) orderedPodium.push({ user: topUsers[0], rank: 1 });
+            if (topUsers[2]) orderedPodium.push({ user: topUsers[2], rank: 3 });
+
+            orderedPodium.forEach(item => {
+                const user = item.user;
+                const rank = item.rank;
+                const card = document.createElement('div');
+                card.className = `podium-card podium-${rank}`;
+
+                // Crown or Badge decoration
+                let crownHTML = '';
+                if (rank === 1) crownHTML = `<div class="crown-wrapper">👑</div>`;
+                else if (rank === 2) crownHTML = `<div class="crown-wrapper" style="font-size: 1.5rem; top: -20px;">🥈</div>`;
+                else if (rank === 3) crownHTML = `<div class="crown-wrapper" style="font-size: 1.5rem; top: -20px;">🥉</div>`;
+
+                // Avatar setup
+                let avatarHTML = `<div class="default-avatar" style="width: 100%; height: 100%; border-radius: 50%; font-size: 2rem; display: flex; justify-content: center; align-items: center; background: #0f172a; color: var(--accent-cyan); border: 3px solid #0d131c;">${(user.globalName || user.username || 'U').charAt(0).toUpperCase()}</div>`;
+                if (user.avatarUrl) {
+                    avatarHTML = `<img class="podium-avatar" src="${user.avatarUrl}" alt="Avatar" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                  <div class="default-avatar" style="display:none; width: 100%; height: 100%; border-radius: 50%; font-size: 2rem; justify-content: center; align-items: center; background: #0f172a; color: var(--accent-cyan); border: 3px solid #0d131c;">${(user.globalName || user.username || 'U').charAt(0).toUpperCase()}</div>`;
+                }
+
+                // Metric value depending on active tab
+                let scoreText = '';
+                if (activeTab === 'all') {
+                    scoreText = `${user.activeScore} pts`;
+                } else if (activeTab === 'voice') {
+                    scoreText = formatVoiceTime(user.voiceSeconds);
+                } else if (activeTab === 'messages') {
+                    scoreText = `${user.messagesCount} смс`;
+                }
+
+                card.innerHTML = `
+                    ${crownHTML}
+                    <div class="podium-avatar-wrapper">${avatarHTML}</div>
+                    <h3>${escapeHTML(user.globalName || user.username)}</h3>
+                    <div class="username">@${escapeHTML(user.username)}</div>
+                    <div class="podium-score">${scoreText}</div>
+                    <div class="podium-substats">
+                        <span>💬 ${formatNumber(user.messagesCount)}</span>
+                        <span>🎙️ ${formatVoiceTime(user.voiceSeconds)}</span>
+                    </div>
+                    <div class="podium-badge">Rank ${rank}</div>
+                `;
+
+                card.addEventListener('click', () => {
+                    openUserModal(user);
+                });
+
+                podiumContainer.appendChild(card);
+            });
+        }
+
+        // 4. Render remaining items in table list
+        const listUsers = filtered.slice(listStartIndex);
+        
+        if (listUsers.length === 0 && listStartIndex > 0) {
+            // All users are rendered in the podium, so table is empty
+            return;
+        }
+
+        listUsers.forEach((user, index) => {
+            const rank = listStartIndex + index + 1;
             const item = document.createElement('div');
             item.className = 'leaderboard-item';
 
             // Rank Badge or Text
             let rankHTML = `<span class="rank-normal">${rank}</span>`;
-            if (rank === 1) rankHTML = `<div class="rank-badge rank-1">1</div>`;
-            else if (rank === 2) rankHTML = `<div class="rank-badge rank-2">2</div>`;
-            else if (rank === 3) rankHTML = `<div class="rank-badge rank-3">3</div>`;
+            if (rank === 1) rankHTML = `<div class="rank-badge rank-1" style="background: var(--gold); box-shadow: 0 0 15px rgba(245, 158, 11, 0.3); width: 32px; height: 32px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: 800; color: #030508;">1</div>`;
+            else if (rank === 2) rankHTML = `<div class="rank-badge rank-2" style="background: var(--silver); box-shadow: 0 0 15px rgba(203, 213, 225, 0.2); width: 32px; height: 32px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: 800; color: #030508;">2</div>`;
+            else if (rank === 3) rankHTML = `<div class="rank-badge rank-3" style="background: var(--bronze); box-shadow: 0 0 15px rgba(234, 88, 12, 0.2); width: 32px; height: 32px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: 800; color: #030508;">3</div>`;
 
             // Avatar setup
             let avatarHTML = `<div class="default-avatar">${(user.globalName || user.username || 'U').charAt(0).toUpperCase()}</div>`;
